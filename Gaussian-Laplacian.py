@@ -1,54 +1,26 @@
+import cv2
 import numpy as np
-import sys
-from PIL import Image
 
+def image_decomposition(image_path, ksize=5, k=4):
+    # 读取图像并转换为灰度图
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
-def euclidean_distance(window1, window2):
-    return np.sqrt(np.sum((window1 - window2) ** 2))
+    # 使用高斯滤波器平滑图像
+    blurred_image = cv2.GaussianBlur(image, (ksize, ksize), 0)
 
+    # 计算拉普拉斯算子
+    laplacian = cv2.Laplacian(blurred_image, cv2.CV_64F)
 
-def non_local_means(image, search_window_size, similarity_window_size, h):
-    height, width = image.shape
-    output = np.zeros_like(image)
+    # 将拉普拉斯算子转换为与平滑后图像相同的数据类型
+    laplacian = np.asarray(laplacian, dtype=blurred_image.dtype)
 
-    sw_half = search_window_size // 2
-    simw_half = similarity_window_size // 2
-    for i in range(height):
-        for j in range(width):
-            weights = []
-            pixel_value = 0.0
-            for k in range(max(0, i - sw_half), min(height, i + sw_half + 1)):
-                for l in range(max(0, j - sw_half), min(width, j + sw_half + 1)):
-                    if i == k and j == l:
-                        continue
-                    i1, i2 = max(0, i - simw_half), min(height, i + simw_half + 1)
-                    j1, j2 = max(0, j - simw_half), min(width, j + simw_half + 1)
-                    k1, k2 = max(0, k - simw_half), min(height, k + simw_half + 1)
-                    l1, l2 = max(0, l - simw_half), min(width, l + simw_half + 1)
-                    window1 = image[i1:i2, j1:j2]
-                    window2 = image[k1:k2, l1:l2]
+    # 计算结构层
+    structure_layer = cv2.addWeighted(blurred_image, 1, laplacian, k, 0)
 
-                    if window1.shape == window2.shape:
-                        dist = euclidean_distance(window1, window2)
-                        weight = np.exp(-(dist ** 2) / (h ** 2))
-                        pixel_value += weight * image[k, l]
-                        weights.append(weight)
-            output[i, j] = pixel_value / np.sum(weights)
+    return structure_layer
 
-    return output
+# 示例
+image_path = "000012.png"
+structure_layer, texture_layer = image_decomposition(image_path)
 
-
-def image_decomposition(image_path, search_window_size=100, similarity_window_size=30, h=100.0):
-    input_image = Image.open(image_path).convert("L")
-    image = np.asarray(input_image, dtype=np.float32)
-
-    structure_layer = non_local_means(image, search_window_size, similarity_window_size, h)
-
-    return Image.fromarray(structure_layer.astype(np.uint8))
-
-
-if __name__ == "__main__":
-    input_image_path = '000012.png'
-    structure_layer, texture_layer = image_decomposition(input_image_path)
-
-    structure_layer.save("structure_layer.png")
+cv2.imwrite("structure_layer.jpg", structure_layer)
